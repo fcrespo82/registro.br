@@ -2,10 +2,10 @@
 
 import requests
 import re
-import bs4
 import argparse
 import getpass
 from collections import namedtuple
+import bs4
 
 
 def config_argparse():
@@ -19,8 +19,9 @@ def config_argparse():
     domains_parser = commands.add_parser(
         'domains', help='List domains for this user')
 
-    # zone_info_parser = commands.add_parser(
-    # 'zone_info', help='List Zone Info for the domain')
+    zone_info_parser = commands.add_parser(
+        'zone_info', help='List Zone Info for the domain')
+    zone_info_parser.add_argument('domain')
 
     return parser
 
@@ -83,9 +84,6 @@ class RegistroBr:
         return r.json()['domains']
 
     def zone_info(self, domain):
-        print(
-            f'Domínio {domain["FQDN"]} com status {domain["Status"]} expira em: {domain["ExpirationDate"]}')
-
         url = f'https://registro.br/2/freedns?fqdn={domain["FQDN"]}&request_token={self._request_token}'
         r = self._session.get(url, cookies=self._cookies,
                               headers=self._headers)
@@ -93,6 +91,7 @@ class RegistroBr:
         bs = bs4.BeautifulSoup(r.content, "lxml")
         records = bs.findAll('input', id=re.compile('^rr-[0-9]+'))
         parsed_records = self.__parse_records(domain, records)
+        print(f'{" Zone info ":=^80}')
         for record in parsed_records:
             print(record)
 
@@ -192,12 +191,14 @@ def main():
 
     if ARGS.command == 'domains':
         domains = registrobr.domains()
-
         for domain in domains:
             print(
                 f'Domínio {domain["FQDN"]} com status {domain["Status"]} expira em: {domain["ExpirationDate"]}')
-
-    # registrobr.zone_info(domains[0])
+    elif ARGS.command == 'zone_info':
+        domains = registrobr.domains()
+        filtered = filter(lambda d: d['FQDN'] == ARGS.domain, domains)
+        for domain in filtered:
+            registrobr.zone_info(domain)
 
     # txt=registrobr.create_txt_record('owner', 'qualquer texto')
 
