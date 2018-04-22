@@ -31,7 +31,7 @@ def main():
     if not ARGS.otp:
         ARGS.otp = input('OTP: ')
     
-    registrobr = RegistroBr(ARGS.user, ARGS.password, ARGS.otp)
+    registrobr = RegistroBrAPI(ARGS.user, ARGS.password, ARGS.otp)
 
     registrobr.login()
 
