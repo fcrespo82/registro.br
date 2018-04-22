@@ -1,37 +1,21 @@
-#!/usr/bin/env python3
-
 import requests
-import re
-import argparse
-import getpass
-from collections import namedtuple
 import bs4
+import re
+from collections import namedtuple
 
+_A_RECORD = namedtuple('A_RECORD', ['ownername', 'ip'])
+_AAAA_RECORD = namedtuple('AAAA_RECORD', ['ownername', 'ipv6'])
+_CNAME_RECORD = namedtuple('CNAME_RECORD', ['ownername', 'server'])
+_TXT_RECORD = namedtuple('TXT_RECORD', ['ownername', 'data'])
+_MX_RECORD = namedtuple('MX_RECORD', ['ownername', 'priority', 'email_server'])
+_TLSA_RECORD = namedtuple('TLSA_RECORD', ['ownername', 'usage', 'selector', 'matching', 'data'])
 
-def config_argparse():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('user')
-    parser.add_argument('-p', '--password')
-    parser.add_argument('-o', '--otp')
-    commands = parser.add_subparsers(title='Commands', dest='command')
-    commands.required = True
-
-    domains_parser = commands.add_parser(
-        'domains', help='List domains for this user')
-
-    zone_info_parser = commands.add_parser(
-        'zone_info', help='List Zone Info for the domain')
-    zone_info_parser.add_argument('domain')
-
-    return parser
-
-
-class RegistroBr:
-    def __init__(self, user, password):
+class RegistroBrAPI:
+    def __init__(self, user, password, otp=None):
         self._session = requests.session()
-        self._user, self._password = user, password
+        self._user, self._password, self._otp = user, password, otp
 
-    def login(self, otp=None):
+    def login(self):
         url = 'https://registro.br/2/login'
 
         r = self._session.get(url)
@@ -54,10 +38,10 @@ class RegistroBr:
             exit(1)
 
         if r.json()['otp']:
-            if not otp:
-                otp = input('OTP: ')
+            if not self._otp:
+                self._otp = input('OTP: ')
             url = 'https://registro.br/ajax/token'
-            dados = {'otp': otp}
+            dados = {'otp': self._otp}
             r = self._session.post(
                 url, json=dados, cookies=self._cookies, headers=self._headers)
             self._cookies = r.cookies
@@ -81,36 +65,45 @@ class RegistroBr:
         r = self._session.get(url, cookies=self._cookies,
                               headers=self._headers)
         self._cookies = r.cookies
-        return r.json()['domains']
+        DomainT = namedtuple('Domain', ['Id', 'FQDN', 'ExpirationDate', 'Status', 'Contact', 'PayLink', 'Auctionable'])
+        domains = [DomainT(**d) for d in r.json()['domains']]
+        return domains
 
     def zone_info(self, domain):
-        url = f'https://registro.br/2/freedns?fqdn={domain["FQDN"]}&request_token={self._request_token}'
+        url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}&request_token={self._request_token}'
         r = self._session.get(url, cookies=self._cookies,
                               headers=self._headers)
         self._cookies = r.cookies
         bs = bs4.BeautifulSoup(r.content, "lxml")
         records = bs.findAll('input', id=re.compile('^rr-[0-9]+'))
         parsed_records = self.__parse_records(domain, records)
-        print(f'{" Zone info ":=^80}')
-        for record in parsed_records:
-            print(record)
+        return parsed_records
+        # print(f'{" Zone info ":=^80}')
+        # for record in parsed_records:
+        #     print(record)
 
     def __parse_records(self, domain, records):
         parsed_records = []
         for record in records:
-            name, type, data = record["value"].split('|')
+            ownername, type, data = record["value"].split('|')
 
             _tuple = namedtuple(f'{type}_RECORD', ['ownername', 'data'])(
-                name, data)
+                ownername, data)
 
-            if type == 'TLSA':
+            if type == 'A':
+                _tuple = _A_RECORD(ownername, data)
+            elif type == 'AAAA':
+                _tuple = _AAAA_RECORD(ownername, data)
+            elif type == 'CNAME':
+                _tuple = _CNAME_RECORD(ownername, data)
+            elif type == 'TLSA':
                 data = self.__parse_tlsa(data)
-                _tuple = namedtuple(f'{type}_RECORD', ['ownername', 'usage', 'selector', 'matching', 'data'])(
-                    name, *data)
+                _tuple = _TLSA_RECORD(ownername, *data)
             elif type == 'MX':
                 data = self.__parse_mx(data)
-                _tuple = namedtuple(f'{type}_RECORD', ['ownername', 'priority', 'email_server'])(
-                    name, *data)
+                _tuple = _MX_RECORD(ownername, *data)
+            elif type == 'TXT':
+                _tuple = _TXT_RECORD(ownername, data)
 
             parsed_records.append(_tuple)
 
@@ -140,7 +133,7 @@ class RegistroBr:
         self._cookies = r.cookies
 
     def add_records(self, domain, records):
-        url = f'https://registro.br/2/freedns?fqdn={domain["FQDN"]}'
+        url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}'
         count = 0
         dados = {'request-token': self._request_token}
         for record in records:
@@ -149,7 +142,7 @@ class RegistroBr:
             url, data=dados, cookies=self._cookies, headers=self._headers)
 
     def remove_records(self, domain, records):
-        url = f'https://registro.br/2/freedns?fqdn={domain["FQDN"]}'
+        url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}'
         count = 0
         dados = {'request-token': self._request_token}
         for record in records:
@@ -157,57 +150,26 @@ class RegistroBr:
         self._session.post(
             url, data=dados, cookies=self._cookies, headers=self._headers)
 
-    def create_a_record(self, ownername, ip):
-        return f'{ownername}|A|{ip}'
+    @staticmethod
+    def create_a_record(ownername, ip):
+        return _A_RECORD(ownername, ip)
 
-    def create_aaaa_record(self, ownername, ipv6):
-        return f'{ownername}|AAAA|{ipv6}'
+    @staticmethod
+    def create_aaaa_record(ownername, ipv6):
+        return _AAAA_RECORD(ownername, ipv6)
 
-    def create_cname_record(self, ownername, server):
-        return f'{ownername}|CNAME|{server}'
+    @staticmethod
+    def create_cname_record(ownername, server):
+        return _CNAME_RECORD(ownername, server)
 
-    def create_mx_record(self, ownername, priority, email_server):
-        return f'{ownername}|MX|{priority} {email_server}'
+    @staticmethod
+    def create_mx_record(ownername, priority, email_server):
+        return _MX_RECORD(ownername, priority, email_server)
 
-    def create_txt_record(self, ownername, data):
-        return f'{ownername}|TXT|{data}'
+    @staticmethod
+    def create_txt_record(ownername, data):
+        return _TXT_RECORD(ownername, data)
 
-    def create_tlsa_record(self, ownername, usage, selector, matching, data):
-        return f'{ownername}|TLSA|{usage} {selector} {matching} {data}'
-
-
-def main():
-    ARGS = config_argparse().parse_args()
-
-    if not ARGS.password:
-        ARGS.password = getpass.getpass()
-
-    registrobr = RegistroBr(ARGS.user, ARGS.password)
-
-    if ARGS.otp:
-        registrobr.login(ARGS.otp)
-    else:
-        registrobr.login()
-
-    if ARGS.command == 'domains':
-        domains = registrobr.domains()
-        for domain in domains:
-            print(
-                f'Domínio {domain["FQDN"]} com status {domain["Status"]} expira em: {domain["ExpirationDate"]}')
-    elif ARGS.command == 'zone_info':
-        domains = registrobr.domains()
-        filtered = filter(lambda d: d['FQDN'] == ARGS.domain, domains)
-        for domain in filtered:
-            registrobr.zone_info(domain)
-
-    # txt=registrobr.create_txt_record('owner', 'qualquer texto')
-
-    # registrobr.add_records(domains[0], [txt])
-
-    # registrobr.zone_info(domains[0])
-
-    registrobr.logout()
-
-
-if __name__ == '__main__':
-    main()
+    @staticmethod
+    def create_tlsa_record(ownername, usage, selector, matching, data):
+        return _TLSA_RECORD(ownername, usage, selector, matching, data)
