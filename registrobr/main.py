@@ -14,6 +14,7 @@ class RegistroBrAPI:
     def __init__(self, user, password, otp=None):
         self._session = requests.session()
         self._user, self._password, self._otp = user, password, otp
+        self.is_logged = False
 
     def login(self):
         url = 'https://registro.br/2/login'
@@ -59,6 +60,7 @@ class RegistroBrAPI:
         bs = bs4.BeautifulSoup(r.content, "lxml")
         self._request_token = bs.find(
             'input', attrs={'id': 'request_token'})['value']
+        self.is_logged = True
 
     def domains(self):
         url = f'https://registro.br/cgi-bin/nicbr/user_domains?request_token={self._request_token}'
@@ -71,16 +73,12 @@ class RegistroBrAPI:
 
     def zone_info(self, domain):
         url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}&request_token={self._request_token}'
-        r = self._session.get(url, cookies=self._cookies,
-                              headers=self._headers)
+        r = self._session.get(url, cookies=self._cookies, headers=self._headers)
         self._cookies = r.cookies
         bs = bs4.BeautifulSoup(r.content, "lxml")
         records = bs.findAll('input', id=re.compile('^rr-[0-9]+'))
         parsed_records = self.__parse_records(domain, records)
         return parsed_records
-        # print(f'{" Zone info ":=^80}')
-        # for record in parsed_records:
-        #     print(record)
 
     def __parse_records(self, domain, records):
         parsed_records = []
@@ -127,10 +125,11 @@ class RegistroBrAPI:
         return (int(priority), email_server)
 
     def logout(self):
-        url = 'https://registro.br/cgi-bin/nicbr/logout'
-        r = self._session.get(url, cookies=self._cookies,
-                              headers=self._headers)
-        self._cookies = r.cookies
+        if self.is_logged:
+            url = 'https://registro.br/cgi-bin/nicbr/logout'
+            r = self._session.get(url, cookies=self._cookies,
+                                headers=self._headers)
+            self._cookies = r.cookies
 
     def add_records(self, domain, records):
         url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}'
