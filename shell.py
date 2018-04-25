@@ -34,6 +34,7 @@ class RegistroBrShell(cmd.Cmd):
             # TLSA_RECORD(ownername='_test', usage=(0, 'CA'), selector=(1, 'Subject Public Key'), matching=(1, 'SHA-256'), data='d2abde240d7cd3ee6b4b28c54df034b9'), MX_RECORD(ownername='_test_mx', priority=10, email_server='test.mx.record'), CNAME_RECORD(ownername='fernando', server='fcrespo82.github.io'), CNAME_RECORD(ownername='blog.fernando', server='fcrespo82.github.io'), CNAME_RECORD(ownername='curriculo.fernando', server='fcrespo82.github.io'), CNAME_RECORD(ownername='nas', server='fcrespo82.myds.me'), TXT_RECORD(ownername='_dnsauth.nas', data='"201803271600392msn9aiznnhm90owmz8d5nc5nddaroa8gv5w7ca7czm2dxcm4c"'), 
             RecordState('Default', TXT_RECORD(ownername='owner', data='"qualquer texto"'))]
 
+        self._records = dict()
         self._records.update({domain.FQDN: records})
 
     def do_login(self, _):

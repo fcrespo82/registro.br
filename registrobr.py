@@ -10,6 +10,16 @@ _TXT_RECORD = namedtuple('TXT_RECORD', ['ownername', 'data'])
 _MX_RECORD = namedtuple('MX_RECORD', ['ownername', 'priority', 'email_server'])
 _TLSA_RECORD = namedtuple('TLSA_RECORD', ['ownername', 'usage', 'selector', 'matching', 'data'])
 
+class Domain:
+    def __init__(self, Id, FQDN, ExpirationDate, Status, Contact, PayLink, Auctionable):
+        self.Id = Id
+        self.FQDN = FQDN
+        self.ExpirationDate = ExpirationDate
+        self.Status = Status
+        self.Contact = Contact
+        self.PayLink = PayLink
+        self.Auctionable = Auctionable
+
 class RegistroBrAPI:
     def __init__(self, user, password, otp=None):
         self._session = requests.session()
@@ -17,6 +27,7 @@ class RegistroBrAPI:
         self.is_logged = False
 
     def login(self):
+        'Log in to registro.br'
         url = 'https://registro.br/2/login'
 
         r = self._session.get(url)
@@ -63,15 +74,17 @@ class RegistroBrAPI:
         self.is_logged = True
 
     def domains(self):
+        'Domains from the user account'
         url = f'https://registro.br/cgi-bin/nicbr/user_domains?request_token={self._request_token}'
         r = self._session.get(url, cookies=self._cookies,
                               headers=self._headers)
         self._cookies = r.cookies
-        DomainT = namedtuple('Domain', ['Id', 'FQDN', 'ExpirationDate', 'Status', 'Contact', 'PayLink', 'Auctionable'])
-        domains = [DomainT(**d) for d in r.json()['domains']]
+        # DomainT = namedtuple('Domain', ['Id', 'FQDN', 'ExpirationDate', 'Status', 'Contact', 'PayLink', 'Auctionable'])
+        domains = [Domain(**d) for d in r.json()['domains']]
         return domains
 
     def zone_info(self, domain):
+        'Records from the domain'
         url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}&request_token={self._request_token}'
         r = self._session.get(url, cookies=self._cookies, headers=self._headers)
         self._cookies = r.cookies
@@ -125,6 +138,7 @@ class RegistroBrAPI:
         return (int(priority), email_server)
 
     def logout(self):
+        'Log out of registro.br'
         if self.is_logged:
             url = 'https://registro.br/cgi-bin/nicbr/logout'
             r = self._session.get(url, cookies=self._cookies,
@@ -132,7 +146,8 @@ class RegistroBrAPI:
             self._cookies = r.cookies
 
     def add_records(self, domain, records):
-        url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}'
+        'Add records to the domain'
+        url = f'https://registro.br/2/freedns?fqdn={domain}'
         count = 0
         dados = {'request-token': self._request_token}
         for record in records:
@@ -141,7 +156,8 @@ class RegistroBrAPI:
             url, data=dados, cookies=self._cookies, headers=self._headers)
 
     def remove_records(self, domain, records):
-        url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}'
+        'Remove records from the domain'
+        url = f'https://registro.br/2/freedns?fqdn={domain}'
         count = 0
         dados = {'request-token': self._request_token}
         for record in records:
