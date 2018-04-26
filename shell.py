@@ -16,14 +16,45 @@ class RecordState:
     def __str__(self):
         return f'RecordState(State={self.State}, Record={self.Record})'
 
+_FORMATTERS = {
+    'BOLD': '\033[1m',
+    'BLACK': '\033[30m',
+    'BLACKBG': '\033[40m',
+    'RED': '\033[31m',
+    'REDBG': '\033[41m',
+    'GREEN': '\033[32m',
+    'GREENBG': '\033[42m',
+    'YELLOW': '\033[33m',
+    'YELLOWBG': '\033[43m',
+    'BLUE': '\033[34m',
+    'BLUEBG': '\033[44m',
+    'MAGENTA': '\033[35m',
+    'MAGENTABG': '\033[45m',
+    'CYAN': '\033[36m',
+    'CYANBG': '\033[46m',
+    'WHITE': '\033[37m',
+    'WHITEBG': '\033[47m',
+    'RESET': '\033[39m',
+    'RESETBG': '\033[49m',
+    'RESETALL': '\033[0m'
+}
 
 class RegistroBrShell(cmd.Cmd):
-    intro = 'Welcome to the registro.br shell. Type help or ? to list commands.\n'
-    prompt = '(registro.br) '
+    intro = 'Welcome to the registro.br shell. Type help or ? to see a list of commands.\n'
+    _default_prompt = f'{_FORMATTERS["GREEN"]}registro.br{_FORMATTERS["RESETALL"]}'
+    prompt = f'{_default_prompt}> '
     _registrobr = None
     _records = dict()
+    _domains = []
+    _selected_domain = None
+    _context = ''
+
+    def __init__(self):
+        super().__init__()
+        self.set_prompt()
 
     def do_mock(self, args):
+        'Development mock'
         domain = _DOMAIN(1, 'crespo.com.br', 'expiry',
                          'status', 'contact', 'paylink', False)
         self._domains = [domain]
@@ -47,32 +78,100 @@ class RegistroBrShell(cmd.Cmd):
             RecordState(create_txt_record('owner', 'qualquer texto'))
         ]
 
+        self._registrobr = RegistroBrAPI('mock')
+        self._user = 'mock'
+        self._registrobr.is_logged = True
         self._records.update({domain.FQDN: mock_records})
+
+
+    def postcmd(self, stop, line):
+        self.set_prompt()
+        return stop
+
+    def set_prompt(self):
+        logged = ""
+        context = self._context
+        if context:
+            context = f' - {_FORMATTERS["RED"]}{context}{_FORMATTERS["RESETALL"]}'
+        if self._registrobr and self._registrobr.is_logged:
+            logged = f' ({self._user})'
+            
+        self.prompt = f'{self._default_prompt}{logged}{context}> '
+
+    def check_domain(self, domain):
+        if self._selected_domain:
+            domain = self._selected_domain.FQDN
+        if not domain:
+            print('Please pass a domain as parameter or use \'use\' keyword')
+            return None
+        return domain
+
+    def ensure_domains(self, force=False):
+        if not self._domains or force:
+            self._domains = self._registrobr.domains()
 
     def do_login(self, _):
         'Login to registro.br'
-        user = input('user: ')
-        password = getpass('password: ')
-        opt = input('otp: ')
-        self._registrobr = RegistroBrAPI(user, password, opt)
-        self._registrobr.login()
-        print('Logged in')
+        if self._registrobr and self._registrobr.is_logged:
+            print('Already logged in, please log out first')
+        else:
+            user = input('user: ')
+            password = getpass('password: ')
+            opt = input('otp: ')
+            self._registrobr = RegistroBrAPI(user, password, opt)
+            self._registrobr.login()
+            self._user = user
+            print('Logged in')
 
-    def do_domains(self, _):
+    def do_use(self, domain):
+        'Select a domain to use as a context'
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
+            return
+        self.ensure_domains()
+        if domain:
+            found = list(filter(lambda d: d.FQDN == domain, self._domains))
+            if found:
+                self._selected_domain = found[0]
+                self._context = self._selected_domain.FQDN
+            else:
+                print('Please try again. Use one of the indexes above or pass a valid FQDN.')
+        else:
+            for i, r in enumerate(self._domains):
+                print(i, r, sep=' - ')
+            chosen = input('Which domain to use? ')
+            try:
+                id = int(chosen)
+                self._selected_domain = self._domains[id]
+                self._context = self._selected_domain.FQDN
+            except:
+                print('Please try again. Use one of the indexes above or pass a valid FQDN.')
+    
+    def complete_use(self, text, line, begidx, endidx):
+        return self.domains_completion(text)
+
+    def do_stop_using(self, _):
+        'Remove domain context'
+        self._selected_domain = None
+        self._context = ""
+
+    def do_domains(self, force):
         'List domains registered to this account'
-        if not self._domains:
-            self._domains = self._registrobr.domains()
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
+            return
+        self.ensure_domains(force)
         for domain in self._domains:
             print(f'{domain.FQDN}')
 
     def do_zone_info(self, domain):
         'List records associated to this domain'
-        if not domain:
-            print('Please pass a domain as parameter')
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
             return
-        'List zone info associated to this domain'
-        if not self._domains:
-            self._domains = self._registrobr.domains()
+        domain = self.check_domain(domain)
+        if not domain: return
+        self.ensure_domains()
         filtered = filter(lambda d: d.FQDN == domain, self._domains)
         for domain in filtered:
             if not self._records:
@@ -80,8 +179,7 @@ class RegistroBrShell(cmd.Cmd):
             print(*self._records[domain.FQDN], sep='\n')
 
     def domains_completion(self, text):
-        if not self._domains:
-            self._domains = self._registrobr.domains()
+        self.ensure_domains()
         filtered = filter(lambda d: d.FQDN.startswith(text), self._domains)
         mapped = [d.FQDN for d in filtered]
         return mapped
@@ -91,6 +189,9 @@ class RegistroBrShell(cmd.Cmd):
 
     def do_records(self, domain):
         'List records from a domain or all domains'
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
+            return
         if domain:
             filtered = [d for d in self._records if d == domain]
         else:
@@ -100,16 +201,18 @@ class RegistroBrShell(cmd.Cmd):
             domain_key_spaced = f' {domain_key} '
             print(f'{domain_key_spaced:=^80}')
             for recordState in self._records[domain_key]:
-                print(recordState)  # .Record, recordState.State, sep=' - ')
+                print(recordState)
             print(80*'=')
 
     def complete_records(self, text, line, begidx, endidx):
         return self.domains_completion(text)
 
     def do_new_txt_record(self, domain):
-        if not domain:
-            print('Please pass a domain as parameter')
+        'Create a TXT record'
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
             return
+        domain = self.check_domain(domain)
         ownername, value = input('onwnername: '), input('value: ')
         state = RecordState(create_txt_record(ownername, value), 'Add')
         self._records[domain].append(state)
@@ -118,9 +221,11 @@ class RegistroBrShell(cmd.Cmd):
         return self.domains_completion(text)
 
     def do_new_cname_record(self, domain):
-        if not domain:
-            print('Please pass a domain as parameter')
+        'Create a CNAME record'
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
             return
+        domain = self.check_domain(domain)
         ownername, server = input('onwnername: '), input('server: ')
         state = RecordState(create_cname_record(ownername, server), 'Add')
         self._records[domain].append(state)
@@ -129,9 +234,11 @@ class RegistroBrShell(cmd.Cmd):
         return self.domains_completion(text)
 
     def do_new_a_record(self, domain):
-        if not domain:
-            print('Please pass a domain as parameter')
+        'Create a A record'
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
             return
+        domain = self.check_domain(domain)
         ownername, ip = input('onwnername: '), input('IP v4: ')
         state = RecordState(create_a_record(ownername, ip), 'Add')
         self._records[domain].append(state)
@@ -140,9 +247,11 @@ class RegistroBrShell(cmd.Cmd):
         return self.domains_completion(text)
 
     def do_new_aaaa_record(self, domain):
-        if not domain:
-            print('Please pass a domain as parameter')
+        'Create a AAAA record'
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
             return
+        domain = self.check_domain(domain)
         ownername, ipv6 = input('onwnername: '), input('IP v6: ')
         state = RecordState(create_aaaa_record(ownername, ipv6), 'Add')
         self._records[domain].append(state)
@@ -151,9 +260,11 @@ class RegistroBrShell(cmd.Cmd):
         return self.domains_completion(text)
 
     def do_new_mx_record(self, domain):
-        if not domain:
-            print('Please pass a domain as parameter')
+        'Create a MX record'
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
             return
+        domain = self.check_domain(domain)
         ownername, priority, email_server = input('onwnername: '), input('value: '), input('email_server: ')
         state = RecordState(create_mx_record(ownername, priority, email_server), 'Add')
         self._records[domain].append(state)
@@ -162,9 +273,11 @@ class RegistroBrShell(cmd.Cmd):
         return self.domains_completion(text)
 
     def do_new_tlsa_record(self, domain):
-        if not domain:
-            print('Please pass a domain as parameter')
+        'Create a TLSA record'
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
             return
+        domain = self.check_domain(domain)
         ownername, usage, selector, matching, data = input('ownername: '), input('usage: '), input('selector: '), input('matching: '), input('data: ')
         state = RecordState(create_tlsa_record(ownername, usage, selector, matching, data))
         self._records[domain].append(state)
@@ -174,9 +287,10 @@ class RegistroBrShell(cmd.Cmd):
 
     def do_delete_record(self, domain):
         'Delete records from a domain'
-        if not domain:
-            print('Please pass a domain as parameter')
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
             return
+        domain = self.check_domain(domain)
         for i, r in enumerate(self._records[domain]):
             print(i, r, sep=' - ')
         chosen = input('which ones to delete (comma separated)? ').split(',')
@@ -190,13 +304,20 @@ class RegistroBrShell(cmd.Cmd):
         return self.domains_completion(text)
 
     def do_logout(self, args):
-        if self._registrobr:
-            print('Logging out of registro.br shell')
+        'Log out of registro.br'
+        if self._registrobr and self._registrobr.is_logged:
+            print('Logging out of registro.br')
             self._registrobr.logout()
+            self._registrobr = None
+            self._records = dict()
+            self._domains = []
+            self._selected_domain = None
+            self._context = ''
         else:
             print('You need to login first')
 
     def do_exit(self, args):
+        'Close registro.br shell logging out if necessary'
         self.do_logout(args)
         return True
 
