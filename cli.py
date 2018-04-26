@@ -2,7 +2,8 @@
 
 import argparse
 import getpass
-from registrobr import RegistroBrAPI
+from registrobr import RegistroBrAPI, create_txt_record, create_a_record, create_aaaa_record, create_cname_record, create_mx_record, create_tlsa_record
+
 
 def config_argparse():
     parser = argparse.ArgumentParser()
@@ -31,20 +32,15 @@ def config_argparse():
 def main():
     ARGS = config_argparse().parse_args()
 
-    if not ARGS.password:
-        ARGS.password = getpass.getpass()
-
-    # if not ARGS.otp:
-        # ARGS.otp = input('OTP: ')
-    
-    registrobr = RegistroBrAPI(ARGS.user, ARGS.password, ARGS.otp)
+    registrobr = RegistroBrAPI(ARGS.user)
 
     registrobr.login()
 
     if ARGS.command == 'domains':
         domains = registrobr.domains()
         for domain in domains:
-            print(f'Domínio: {domain.FQDN} - Status: {domain.Status} - Expira em: {domain.ExpirationDate}')
+            print(
+                f'Domínio: {domain.FQDN} - Status: {domain.Status} - Expira em: {domain.ExpirationDate}')
     elif ARGS.command == 'zone_info':
         domains = registrobr.domains()
         filtered = filter(lambda d: d.FQDN == ARGS.domain, domains)
@@ -53,22 +49,23 @@ def main():
             print(*records, sep='\n')
     elif ARGS.command == 'add_record':
         if ARGS.type.upper() == 'A':
-            record=registrobr.create_a_record(ARGS.ownername, ARGS.value)
+            record = create_a_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'AAA':
-            record=registrobr.create_aaaa_record(ARGS.ownername, ARGS.value)
+            record = create_aaaa_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'record':
-            record=registrobr.create_txt_record(ARGS.ownername, ARGS.value)
+            record = create_txt_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'CNAME':
-            record=registrobr.create_cname_record(ARGS.ownername, ARGS.value)
+            record = create_cname_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'MX':
-            record=registrobr.create_mx_record(ARGS.ownername, **ARGS.value.split())
+            record = create_mx_record(ARGS.ownername, **ARGS.value.split())
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'TLSA':
-            record=registrobr.create_tlsa_record(ARGS.ownername, **ARGS.value.split())
+            record = create_tlsa_record(
+                ARGS.ownername, **ARGS.value.split())
             registrobr.add_records(ARGS.domain, [record])
 
     registrobr.logout()

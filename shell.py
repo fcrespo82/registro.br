@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 import cmd
-from registrobr import RegistroBrAPI
+from registrobr import RegistroBrAPI, create_txt_record, create_a_record, create_aaaa_record, create_cname_record, create_mx_record, create_tlsa_record
+from registrobr.registrobr import _DOMAIN
 from getpass import getpass
 from collections import namedtuple
 
+
 class RecordState:
-    def __init__(self, state, record):
+    'Represents the state of the record on registro.br'
+
+    def __init__(self, record, state='Default'):
         self.State = state
         self.Record = record
+
     def __str__(self):
         return f'RecordState(State={self.State}, Record={self.Record})'
+
 
 class RegistroBrShell(cmd.Cmd):
     intro = 'Welcome to the registro.br shell. Type help or ? to list commands.\n'
@@ -18,24 +24,30 @@ class RegistroBrShell(cmd.Cmd):
     _records = dict()
 
     def do_mock(self, args):
-        DomainT = namedtuple('Domain', ['Id', 'FQDN', 'ExpirationDate', 'Status', 'Contact', 'PayLink', 'Auctionable'])
-
-        domain = DomainT(1, 'crespo.com.br', 'expiry', 'status', 'contact', 'paylink', False)
+        domain = _DOMAIN(1, 'crespo.com.br', 'expiry',
+                         'status', 'contact', 'paylink', False)
         self._domains = [domain]
 
-        A_RECORD = namedtuple('A_RECORD', ['ownername', 'ip'])
-        AAAA_RECORD = namedtuple('AAAA_RECORD', ['ownername', 'ipv6'])
-        CNAME_RECORD = namedtuple('CNAME_RECORD', ['ownername', 'server'])
-        TXT_RECORD = namedtuple('TXT_RECORD', ['ownername', 'data'])
-        MX_RECORD = namedtuple('MX_RECORD', ['ownername', 'priority', 'email_server'])
-        TLSA_RECORD = namedtuple('TLSA_RECORD', ['ownername', 'usage', 'selector', 'matching', 'data'])
-        records = [
-            # TXT_RECORD(ownername='_acme-challenge', data='"LupjAATGvUdOtoofGU4j_TK4WsZM5omLSuc5txLndfg"'), 
-            # TLSA_RECORD(ownername='_test', usage=(0, 'CA'), selector=(1, 'Subject Public Key'), matching=(1, 'SHA-256'), data='d2abde240d7cd3ee6b4b28c54df034b9'), MX_RECORD(ownername='_test_mx', priority=10, email_server='test.mx.record'), CNAME_RECORD(ownername='fernando', server='fcrespo82.github.io'), CNAME_RECORD(ownername='blog.fernando', server='fcrespo82.github.io'), CNAME_RECORD(ownername='curriculo.fernando', server='fcrespo82.github.io'), CNAME_RECORD(ownername='nas', server='fcrespo82.myds.me'), TXT_RECORD(ownername='_dnsauth.nas', data='"201803271600392msn9aiznnhm90owmz8d5nc5nddaroa8gv5w7ca7czm2dxcm4c"'), 
-            RecordState('Default', TXT_RECORD(ownername='owner', data='"qualquer texto"'))]
+        mock_records = [
+            RecordState(create_txt_record('_acme-challenge',
+                                          'LupjAATGvUdOtoofGU4j_TK4WsZM5omLSuc5txLndfg')),
+            RecordState(create_tlsa_record('_test', usage=0, selector=1,
+                                           matching=1, data='d2abde240d7cd3ee6b4b28c54df034b9')),
+            RecordState(create_mx_record('_test_mx', 10, 'test.mx.record')),
+            RecordState(create_cname_record(
+                ownername='fernando', server='fcrespo82.github.io')),
+            RecordState(create_cname_record(
+                ownername='blog.fernando', server='fcrespo82.github.io')),
+            RecordState(create_cname_record(
+                ownername='curriculo.fernando', server='fcrespo82.github.io')),
+            RecordState(create_cname_record(
+                ownername='nas', server='fcrespo82.myds.me')),
+            RecordState(create_txt_record(ownername='_dnsauth.nas',
+                                          data='201803271600392msn9aiznnhm90owmz8d5nc5nddaroa8gv5w7ca7czm2dxcm4c')),
+            RecordState(create_txt_record('owner', 'qualquer texto'))
+        ]
 
-        self._records = dict()
-        self._records.update({domain.FQDN: records})
+        self._records.update({domain.FQDN: mock_records})
 
     def do_login(self, _):
         'Login to registro.br'
@@ -46,14 +58,13 @@ class RegistroBrShell(cmd.Cmd):
         self._registrobr.login()
         print('Logged in')
 
-
     def do_domains(self, _):
         'List domains registered to this account'
         if not self._domains:
             self._domains = self._registrobr.domains()
         for domain in self._domains:
             print(f'{domain.FQDN}')
-    
+
     def do_zone_info(self, domain):
         'List records associated to this domain'
         if not domain:
@@ -65,7 +76,7 @@ class RegistroBrShell(cmd.Cmd):
         filtered = filter(lambda d: d.FQDN == domain, self._domains)
         for domain in filtered:
             if not self._records:
-                self._records = self._registrobr.zone_info(domain)
+                self._records.update(self._registrobr.zone_info(domain))
             print(*self._records[domain.FQDN], sep='\n')
 
     def domains_completion(self, text):
@@ -84,12 +95,12 @@ class RegistroBrShell(cmd.Cmd):
             filtered = [d for d in self._records if d == domain]
         else:
             filtered = self._records
-        
+
         for domain_key in filtered:
             domain_key_spaced = f' {domain_key} '
             print(f'{domain_key_spaced:=^80}')
             for recordState in self._records[domain_key]:
-                print(recordState) #.Record, recordState.State, sep=' - ')
+                print(recordState)  # .Record, recordState.State, sep=' - ')
             print(80*'=')
 
     def complete_records(self, text, line, begidx, endidx):
@@ -100,33 +111,66 @@ class RegistroBrShell(cmd.Cmd):
             print('Please pass a domain as parameter')
             return
         ownername, value = input('onwnername: '), input('value: ')
-        state = RecordState('Add', RegistroBrAPI.create_txt_record(ownername, value))
-        items = self._records[domain]
-        items.append(state)
-        self._records.update({domain: items})
+        state = RecordState(create_txt_record(ownername, value), 'Add')
+        self._records[domain].append(state)
 
     def complete_new_txt_record(self, text, line, begidx, endidx):
         return self.domains_completion(text)
 
-    # def do_new_cname_record(self, args):
-    #     ownername, server = input('onwnername: '), input('server: ')
-    #     self._records.append(RegistroBrAPI.create_cname_record(ownername, server))
+    def do_new_cname_record(self, domain):
+        if not domain:
+            print('Please pass a domain as parameter')
+            return
+        ownername, server = input('onwnername: '), input('server: ')
+        state = RecordState(create_cname_record(ownername, server), 'Add')
+        self._records[domain].append(state)
 
-    # def do_new_a_record(self, args):
-    #     ownername, ip = input('onwnername: '), input('ip: ')
-    #     self._records.append(RegistroBrAPI.create_a_record(ownername, ip))
+    def complete_new_cname_record(self, text, line, begidx, endidx):
+        return self.domains_completion(text)
 
-    # def do_new_aaaa_record(self, args):
-    #     ownername, ipv6 = input('onwnername: '), input('ipv6: ')
-    #     self._records.append(RegistroBrAPI.create_aaaa_record(ownername, ipv6))
+    def do_new_a_record(self, domain):
+        if not domain:
+            print('Please pass a domain as parameter')
+            return
+        ownername, ip = input('onwnername: '), input('IP v4: ')
+        state = RecordState(create_a_record(ownername, ip), 'Add')
+        self._records[domain].append(state)
 
-    # def do_new_mx_record(self, args):
-    #     ownername, priority, email_server = input('onwnername: '), input('value: '), input('email_server: ')
-    #     self._records.append(RegistroBrAPI.create_mx_record(ownername, priority, email_server))
+    def complete_new_a_record(self, text, line, begidx, endidx):
+        return self.domains_completion(text)
 
-    # def do_new_tlsa_record(self, args):
-    #     ownername, usage, selector, matching, data = input('ownername: '), input('usage: '), input('selector: '), input('matching: '), input('data: ')
-    #     self._records.append(RegistroBrAPI.create_tlsa_record(ownername, usage, selector, matching, data))
+    def do_new_aaaa_record(self, domain):
+        if not domain:
+            print('Please pass a domain as parameter')
+            return
+        ownername, ipv6 = input('onwnername: '), input('IP v6: ')
+        state = RecordState(create_aaaa_record(ownername, ipv6), 'Add')
+        self._records[domain].append(state)
+
+    def complete_new_aaaa_record(self, text, line, begidx, endidx):
+        return self.domains_completion(text)
+
+    def do_new_mx_record(self, domain):
+        if not domain:
+            print('Please pass a domain as parameter')
+            return
+        ownername, priority, email_server = input('onwnername: '), input('value: '), input('email_server: ')
+        state = RecordState(create_mx_record(ownername, priority, email_server), 'Add')
+        self._records[domain].append(state)
+
+    def complete_new_mx_record(self, text, line, begidx, endidx):
+        return self.domains_completion(text)
+
+    def do_new_tlsa_record(self, domain):
+        if not domain:
+            print('Please pass a domain as parameter')
+            return
+        ownername, usage, selector, matching, data = input('ownername: '), input('usage: '), input('selector: '), input('matching: '), input('data: ')
+        state = RecordState(create_tlsa_record(ownername, usage, selector, matching, data))
+        self._records[domain].append(state)
+
+    def complete_new_tlsa_record(self, text, line, begidx, endidx):
+        return self.domains_completion(text)
 
     def do_delete_record(self, domain):
         'Delete records from a domain'
@@ -145,8 +189,6 @@ class RegistroBrShell(cmd.Cmd):
     def complete_delete_record(self, text, line, begidx, endidx):
         return self.domains_completion(text)
 
-
-
     def do_logout(self, args):
         if self._registrobr:
             print('Logging out of registro.br shell')
@@ -157,6 +199,7 @@ class RegistroBrShell(cmd.Cmd):
     def do_exit(self, args):
         self.do_logout(args)
         return True
+
 
 if __name__ == '__main__':
     RegistroBrShell().cmdloop()
