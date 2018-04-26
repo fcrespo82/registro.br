@@ -24,6 +24,9 @@ _TLSA_RECORD_MATCHING = {1: 'SHA-256', 2: 'SHA-512'}
 
 
 class RegistroBrAPI:
+    is_logged = False
+    _cookies = None
+    _headers = None
     def __init__(self, user, password=None, otp=None):
         self._session = requests.session()
         self._user, self._password, self._otp = user, password, otp
@@ -146,6 +149,7 @@ class RegistroBrAPI:
             r = self._session.get(url, cookies=self._cookies,
                                   headers=self._headers)
             self._cookies = r.cookies
+            self.is_logged = False
 
     def add_records(self, domain, records):
         'Add records to the domain'
