@@ -1,27 +1,30 @@
 import requests
 import bs4
 import re
+from getpass import getpass
+from ipaddress import IPv4Address, IPv6Address, AddressValueError
 from collections import namedtuple
+from abc import ABC
 
 _A_RECORD = namedtuple('A_RECORD', ['ownername', 'ip'])
 _AAAA_RECORD = namedtuple('AAAA_RECORD', ['ownername', 'ipv6'])
 _CNAME_RECORD = namedtuple('CNAME_RECORD', ['ownername', 'server'])
 _TXT_RECORD = namedtuple('TXT_RECORD', ['ownername', 'data'])
 _MX_RECORD = namedtuple('MX_RECORD', ['ownername', 'priority', 'email_server'])
-_TLSA_RECORD = namedtuple('TLSA_RECORD', ['ownername', 'usage', 'selector', 'matching', 'data'])
+_TLSA_RECORD = namedtuple(
+    'TLSA_RECORD', ['ownername', 'usage', 'selector', 'matching', 'data'])
 
-class Domain:
-    def __init__(self, Id, FQDN, ExpirationDate, Status, Contact, PayLink, Auctionable):
-        self.Id = Id
-        self.FQDN = FQDN
-        self.ExpirationDate = ExpirationDate
-        self.Status = Status
-        self.Contact = Contact
-        self.PayLink = PayLink
-        self.Auctionable = Auctionable
+_DOMAIN = namedtuple('Domain', [
+                     'Id', 'FQDN', 'ExpirationDate', 'Status', 'Contact', 'PayLink', 'Auctionable'])
+
+_TLSA_RECORD_USAGE = {0: 'CA', 1: 'Service certificate',
+                      2: 'Trust Anchor', 3: 'Dom-issued certificate'}
+_TLSA_RECORD_SELECTOR = {0: 'Subject Public Key', 1: 'Subject Public Key'}
+_TLSA_RECORD_MATCHING = {1: 'SHA-256', 2: 'SHA-512'}
+
 
 class RegistroBrAPI:
-    def __init__(self, user, password, otp=None):
+    def __init__(self, user, password=None, otp=None):
         self._session = requests.session()
         self._user, self._password, self._otp = user, password, otp
         self.is_logged = False
@@ -38,6 +41,9 @@ class RegistroBrAPI:
         self._headers = {
             'Request-Token': request_token
         }
+
+        if not self._password:
+            self._password = getpass('Password: ')
 
         dados = {'user': self._user, 'password': self._password}
 
@@ -79,27 +85,27 @@ class RegistroBrAPI:
         r = self._session.get(url, cookies=self._cookies,
                               headers=self._headers)
         self._cookies = r.cookies
-        # DomainT = namedtuple('Domain', ['Id', 'FQDN', 'ExpirationDate', 'Status', 'Contact', 'PayLink', 'Auctionable'])
-        domains = [Domain(**d) for d in r.json()['domains']]
+        domains = [_DOMAIN(**d) for d in r.json()['domains']]
         return domains
 
     def zone_info(self, domain):
         'Records from the domain'
         url = f'https://registro.br/2/freedns?fqdn={domain.FQDN}&request_token={self._request_token}'
-        r = self._session.get(url, cookies=self._cookies, headers=self._headers)
+        r = self._session.get(url, cookies=self._cookies,
+                              headers=self._headers)
         self._cookies = r.cookies
         bs = bs4.BeautifulSoup(r.content, "lxml")
         records = bs.findAll('input', id=re.compile('^rr-[0-9]+'))
         parsed_records = self.__parse_records(domain, records)
-        return parsed_records
+        return {domain.FQDN: parsed_records}
 
     def __parse_records(self, domain, records):
         parsed_records = []
         for record in records:
             ownername, type, data = record["value"].split('|')
 
-            _tuple = namedtuple(f'{type}_RECORD', ['ownername', 'data'])(
-                ownername, data)
+            # _tuple = namedtuple(f'{type}_RECORD', ['ownername', 'data'])(
+            #     ownername, data)
 
             if type == 'A':
                 _tuple = _A_RECORD(ownername, data)
@@ -122,14 +128,10 @@ class RegistroBrAPI:
 
     def __parse_tlsa(self, data):
         usage, selector, matching, data = data.rstrip().split(' ')
-        usage_type = {0: 'CA', 1: 'Service certificate',
-                      2: 'Trust Anchor', 3: 'Domain-issued certificate'}
-        selector_type = {0: 'Subject Public Key', 1: 'Subject Public Key'}
-        matching_type = {1: 'SHA-256', 2: 'SHA-512'}
 
-        usage = (int(usage), usage_type[int(usage)])
-        selector = (int(selector), selector_type[int(selector)])
-        matching = (int(matching), matching_type[int(matching)])
+        usage = (int(usage), _TLSA_RECORD_USAGE[int(usage)])
+        selector = (int(selector), _TLSA_RECORD_SELECTOR[int(selector)])
+        matching = (int(matching), _TLSA_RECORD_MATCHING[int(matching)])
 
         return usage, selector, matching, data
 
@@ -142,7 +144,7 @@ class RegistroBrAPI:
         if self.is_logged:
             url = 'https://registro.br/cgi-bin/nicbr/logout'
             r = self._session.get(url, cookies=self._cookies,
-                                headers=self._headers)
+                                  headers=self._headers)
             self._cookies = r.cookies
 
     def add_records(self, domain, records):
@@ -165,26 +167,49 @@ class RegistroBrAPI:
         self._session.post(
             url, data=dados, cookies=self._cookies, headers=self._headers)
 
-    @staticmethod
-    def create_a_record(ownername, ip):
-        return _A_RECORD(ownername, ip)
 
-    @staticmethod
-    def create_aaaa_record(ownername, ipv6):
-        return _AAAA_RECORD(ownername, ipv6)
+def create_a_record(ownername, ip):
+    'Creates an A record'
+    try:
+        IPv4Address(ip)
+    except AddressValueError as addressValueError:
+        raise ValueError(f'Invalid IP address: {addressValueError}')
+    return _A_RECORD(ownername, ip)
 
-    @staticmethod
-    def create_cname_record(ownername, server):
-        return _CNAME_RECORD(ownername, server)
 
-    @staticmethod
-    def create_mx_record(ownername, priority, email_server):
-        return _MX_RECORD(ownername, priority, email_server)
+def create_aaaa_record(ownername, ipv6):
+    'Creates an AAAA record'
+    try:
+        IPv6Address(ipv6)
+    except AddressValueError as addressValueError:
+        raise ValueError(f'Invalid IP address: {addressValueError}')
+    return _AAAA_RECORD(ownername, ipv6)
 
-    @staticmethod
-    def create_txt_record(ownername, data):
-        return _TXT_RECORD(ownername, data)
 
-    @staticmethod
-    def create_tlsa_record(ownername, usage, selector, matching, data):
-        return _TLSA_RECORD(ownername, usage, selector, matching, data)
+def create_cname_record(ownername, server):
+    'Creates a CNAME record'
+    return _CNAME_RECORD(ownername, server)
+
+
+def create_mx_record(ownername, priority, email_server):
+    'Creates a MX record'
+    max_range = 65535
+    if priority not in range(1, max_range):
+        raise ValueError(f'Priority must be within 1-{max_range} range')
+    return _MX_RECORD(ownername, priority, email_server)
+
+
+def create_txt_record(ownername, data):
+    'Creates a TXT record'
+    return _TXT_RECORD(ownername, data)
+
+
+def create_tlsa_record(ownername, usage, selector, matching, data):
+    'Creates a TLS record'
+    if usage not in _TLSA_RECORD_USAGE:
+        raise ValueError(f'Usage must be one of {_TLSA_RECORD_USAGE}')
+    if selector not in _TLSA_RECORD_SELECTOR:
+        raise ValueError(f'Selector must be one of {_TLSA_RECORD_SELECTOR}')
+    if matching not in _TLSA_RECORD_MATCHING:
+        raise ValueError(f'Matching must be one of {_TLSA_RECORD_MATCHING}')
+    return _TLSA_RECORD(ownername, usage, selector, matching, data)
