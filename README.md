@@ -5,6 +5,7 @@
 - bs4
 - requests
 - html5lib
+- colorama
 
 ## Caveat
 

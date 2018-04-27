@@ -6,7 +6,7 @@ from getpass import getpass
 from collections import namedtuple
 from pprint import pprint
 import operator
-
+from colorama import init, Fore, Style
 
 class RecordState:
     'Represents the state of the record on registro.br'
@@ -19,33 +19,9 @@ class RecordState:
         return f'RecordState(State={self.State}, Record={self.Record})'
 
 
-_FORMATTERS = {
-    'BOLD': '\033[1m',
-    'BLACK': '\033[30m',
-    'BLACKBG': '\033[40m',
-    'RED': '\033[31m',
-    'REDBG': '\033[41m',
-    'GREEN': '\033[32m',
-    'GREENBG': '\033[42m',
-    'YELLOW': '\033[33m',
-    'YELLOWBG': '\033[43m',
-    'BLUE': '\033[34m',
-    'BLUEBG': '\033[44m',
-    'MAGENTA': '\033[35m',
-    'MAGENTABG': '\033[45m',
-    'CYAN': '\033[36m',
-    'CYANBG': '\033[46m',
-    'WHITE': '\033[37m',
-    'WHITEBG': '\033[47m',
-    'RESET': '\033[39m',
-    'RESETBG': '\033[49m',
-    'RESETALL': '\033[0m'
-}
-
-
 class RegistroBrShell(cmd.Cmd):
     intro = 'Welcome to the registro.br shell. Type help or ? to see a list of commands.\n'
-    _default_prompt = f'{_FORMATTERS["GREEN"]}registro.br{_FORMATTERS["RESETALL"]}'
+    _default_prompt = f'{Style.BRIGHT+Fore.GREEN}registro.br{Style.RESET_ALL}'
     prompt = f'{_default_prompt}> '
     _registrobr = None
     _records = dict()
@@ -95,7 +71,7 @@ class RegistroBrShell(cmd.Cmd):
         logged = ""
         context = self._context
         if context:
-            context = f' - {_FORMATTERS["RED"]}{context}{_FORMATTERS["RESETALL"]}'
+            context = f' - {Style.BRIGHT+Fore.RED}{context}{Style.RESET_ALL}'
         if self._registrobr and self._registrobr.is_logged:
             logged = f' ({self._user})'
 
@@ -362,12 +338,12 @@ def print_records(records):
 
 def record_line(state, type, record):
     data = record_values(record)
-    color = _FORMATTERS["YELLOW"]
+    color = Style.BRIGHT+Fore.YELLOW
     if state == 'Delete':
-        color = _FORMATTERS["RED"]
+        color = Style.BRIGHT+Fore.RED
     elif state == 'Add':
-        color = _FORMATTERS["BLUE"]
-    return f'{color}{state:<9}{_FORMATTERS["RESETALL"]} | {type:>12} | {data:<53}'
+        color = Style.BRIGHT+Fore.BLUE
+    return f'{color}{state:<9}{Style.RESET_ALL} | {type:>12} | {data:<53}'
 
 
 def record_values(record):
@@ -379,6 +355,7 @@ def record_values(record):
 
 
 def main():
+    init()
     RegistroBrShell().cmdloop()
 
 
