@@ -184,11 +184,31 @@ class RegistroBrShell(cmd.Cmd):
                 self._records.update({domain_obj.FQDN: records_with_state})
             for key in self._records:
                 print(f'{f" {key} ":=^80}')
-                sorted_records = sorted(
-                    self._records[key], key=operator.attrgetter('Record.__class__.__name__'))
-                print_records(sorted_records)
+                print_records(self._records[key])
 
-    def help_zone_info(self):
+    def help_zone_info(self):                                     
+        print(f'''List zone info records for the selected domain
+
+{'Type':^12} | {'Data':^53}
+  TXT_RECORD | ownername - data
+   MX_RECORD | ownername - priority - email_server
+CNAME_RECORD | ownername - server
+ TLSA_RECORD | ownername - usage - selector - matching - data'
+    A_RECORD | ownername - IPv4
+ AAAA_RECORD | ownername - IPv6
+
+For TLSA_RECORD:
+usage = 0: 'CA'
+        1: 'Service certificate'
+        2: 'Trust Anchor'
+        3: 'Dom-issued certificate'
+
+selector = 0: 'Subject Public Key'
+           1: 'Subject Public Key'
+
+matching = 1: 'SHA-256'
+           2: 'SHA-512'
+''')
         pass
 
     def domains_completion(self, text):
@@ -198,27 +218,6 @@ class RegistroBrShell(cmd.Cmd):
         return mapped
 
     def complete_zone_info(self, text, line, begidx, endidx):
-        return self.domains_completion(text)
-
-    def do_records(self, domain):
-        'List records from a domain or all domains'
-        if not (self._registrobr and self._registrobr.is_logged):
-            print('Please log in first!')
-            return
-        domain = self.check_domain(domain)
-        if domain:
-            filtered = [d for d in self._records if d == domain]
-        else:
-            filtered = self._records
-
-        for domain_key in filtered:
-            domain_key_spaced = f' {domain_key} '
-            print(f'{domain_key_spaced:=^80}')
-            for recordState in self._records[domain_key]:
-                print(recordState)
-            print(80*'=')
-
-    def complete_records(self, text, line, begidx, endidx):
         return self.domains_completion(text)
 
     def do_new_txt_record(self, domain):
@@ -363,7 +362,12 @@ def print_records(records):
 
 def record_line(state, type, record):
     data = record_values(record)
-    return f'{state:<9} | {type:>12} | {data:<53}'
+    color = _FORMATTERS["YELLOW"]
+    if state == 'Delete':
+        color = _FORMATTERS["RED"]
+    elif state == 'Add':
+        color = _FORMATTERS["BLUE"]
+    return f'{color}{state:<9}{_FORMATTERS["RESETALL"]} | {type:>12} | {data:<53}'
 
 
 def record_values(record):
