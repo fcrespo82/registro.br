@@ -16,8 +16,8 @@ setup(name='registro.br',
       scripts=['cli.py', 'shell.py'],
       entry_points={
           'console_scripts': [
-              'registrobr-cli = cli.py:main',
-              'registrobr-shell = shell.py:main'
+              'registrobr-cli = cli:main',
+              'registrobr-shell = shell:main'
           ]
       },
       install_requires=required

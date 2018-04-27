@@ -38,7 +38,7 @@ class RegistroBrAPI:
 
         r = self._session.get(url)
 
-        bs = bs4.BeautifulSoup(r.content, "lxml")
+        bs = bs4.BeautifulSoup(r.content, "html5lib")
         request_token = bs.find(attrs={'id': 'request-token'})['value']
 
         self._headers = {
@@ -77,7 +77,7 @@ class RegistroBrAPI:
                               headers=self._headers)
         self._cookies = r.cookies
 
-        bs = bs4.BeautifulSoup(r.content, "lxml")
+        bs = bs4.BeautifulSoup(r.content, "html5lib")
         self._request_token = bs.find(
             'input', attrs={'id': 'request_token'})['value']
         self.is_logged = True
@@ -97,10 +97,10 @@ class RegistroBrAPI:
         r = self._session.get(url, cookies=self._cookies,
                               headers=self._headers)
         self._cookies = r.cookies
-        bs = bs4.BeautifulSoup(r.content, "lxml")
+        bs = bs4.BeautifulSoup(r.content, "html5lib")
         records = bs.findAll('input', id=re.compile('^rr-[0-9]+'))
         parsed_records = self.__parse_records(domain, records)
-        return {domain.FQDN: parsed_records}
+        return parsed_records
 
     def __parse_records(self, domain, records):
         parsed_records = []

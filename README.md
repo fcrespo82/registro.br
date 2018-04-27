@@ -4,7 +4,7 @@
 
 - bs4
 - requests
-- lxml
+- html5lib
 
 ## Caveat
 
