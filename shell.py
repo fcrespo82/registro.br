@@ -4,17 +4,20 @@ from registrobr import RegistroBrAPI, create_txt_record, create_a_record, create
 from registrobr.registrobr import _DOMAIN
 from getpass import getpass
 from collections import namedtuple
+from pprint import pprint
+import operator
 
 
 class RecordState:
     'Represents the state of the record on registro.br'
 
-    def __init__(self, record, state='Default'):
+    def __init__(self, record, state='Unchanged'):
         self.State = state
         self.Record = record
 
     def __str__(self):
         return f'RecordState(State={self.State}, Record={self.Record})'
+
 
 _FORMATTERS = {
     'BOLD': '\033[1m',
@@ -38,6 +41,7 @@ _FORMATTERS = {
     'RESETBG': '\033[49m',
     'RESETALL': '\033[0m'
 }
+
 
 class RegistroBrShell(cmd.Cmd):
     intro = 'Welcome to the registro.br shell. Type help or ? to see a list of commands.\n'
@@ -83,7 +87,6 @@ class RegistroBrShell(cmd.Cmd):
         self._registrobr.is_logged = True
         self._records.update({domain.FQDN: mock_records})
 
-
     def postcmd(self, stop, line):
         self.set_prompt()
         return stop
@@ -95,7 +98,7 @@ class RegistroBrShell(cmd.Cmd):
             context = f' - {_FORMATTERS["RED"]}{context}{_FORMATTERS["RESETALL"]}'
         if self._registrobr and self._registrobr.is_logged:
             logged = f' ({self._user})'
-            
+
         self.prompt = f'{self._default_prompt}{logged}{context}> '
 
     def check_domain(self, domain):
@@ -115,10 +118,8 @@ class RegistroBrShell(cmd.Cmd):
         if self._registrobr and self._registrobr.is_logged:
             print('Already logged in, please log out first')
         else:
-            user = input('user: ')
-            password = getpass('password: ')
-            opt = input('otp: ')
-            self._registrobr = RegistroBrAPI(user, password, opt)
+            user = input('User: ')
+            self._registrobr = RegistroBrAPI(user)
             self._registrobr.login()
             self._user = user
             print('Logged in')
@@ -135,18 +136,20 @@ class RegistroBrShell(cmd.Cmd):
                 self._selected_domain = found[0]
                 self._context = self._selected_domain.FQDN
             else:
-                print('Please try again. Use one of the indexes above or pass a valid FQDN.')
+                print(
+                    'Please try again. Use one of the indexes above or pass a valid FQDN.')
         else:
-            for i, r in enumerate(self._domains):
-                print(i, r, sep=' - ')
+            for index, domain in enumerate(self._domains):
+                print(index, domain.FQDN, sep=' - ')
             chosen = input('Which domain to use? ')
             try:
                 id = int(chosen)
                 self._selected_domain = self._domains[id]
                 self._context = self._selected_domain.FQDN
             except:
-                print('Please try again. Use one of the indexes above or pass a valid FQDN.')
-    
+                print(
+                    'Please try again. Use one of the indexes above or pass a valid FQDN.')
+
     def complete_use(self, text, line, begidx, endidx):
         return self.domains_completion(text)
 
@@ -170,13 +173,23 @@ class RegistroBrShell(cmd.Cmd):
             print('Please log in first!')
             return
         domain = self.check_domain(domain)
-        if not domain: return
+        if not domain:
+            return
         self.ensure_domains()
         filtered = filter(lambda d: d.FQDN == domain, self._domains)
-        for domain in filtered:
-            if not self._records:
-                self._records.update(self._registrobr.zone_info(domain))
-            print(*self._records[domain.FQDN], sep='\n')
+        for domain_obj in filtered:
+            if domain_obj.FQDN not in self._records:
+                records = self._registrobr.zone_info(domain_obj)
+                records_with_state = list(map(RecordState, records))
+                self._records.update({domain_obj.FQDN: records_with_state})
+            for key in self._records:
+                print(f'{f" {key} ":=^80}')
+                sorted_records = sorted(
+                    self._records[key], key=operator.attrgetter('Record.__class__.__name__'))
+                print_records(sorted_records)
+
+    def help_zone_info(self):
+        pass
 
     def domains_completion(self, text):
         self.ensure_domains()
@@ -192,6 +205,7 @@ class RegistroBrShell(cmd.Cmd):
         if not (self._registrobr and self._registrobr.is_logged):
             print('Please log in first!')
             return
+        domain = self.check_domain(domain)
         if domain:
             filtered = [d for d in self._records if d == domain]
         else:
@@ -213,6 +227,8 @@ class RegistroBrShell(cmd.Cmd):
             print('Please log in first!')
             return
         domain = self.check_domain(domain)
+        if not domain:
+            return
         ownername, value = input('onwnername: '), input('value: ')
         state = RecordState(create_txt_record(ownername, value), 'Add')
         self._records[domain].append(state)
@@ -226,6 +242,8 @@ class RegistroBrShell(cmd.Cmd):
             print('Please log in first!')
             return
         domain = self.check_domain(domain)
+        if not domain:
+            return
         ownername, server = input('onwnername: '), input('server: ')
         state = RecordState(create_cname_record(ownername, server), 'Add')
         self._records[domain].append(state)
@@ -239,6 +257,8 @@ class RegistroBrShell(cmd.Cmd):
             print('Please log in first!')
             return
         domain = self.check_domain(domain)
+        if not domain:
+            return
         ownername, ip = input('onwnername: '), input('IP v4: ')
         state = RecordState(create_a_record(ownername, ip), 'Add')
         self._records[domain].append(state)
@@ -252,6 +272,8 @@ class RegistroBrShell(cmd.Cmd):
             print('Please log in first!')
             return
         domain = self.check_domain(domain)
+        if not domain:
+            return
         ownername, ipv6 = input('onwnername: '), input('IP v6: ')
         state = RecordState(create_aaaa_record(ownername, ipv6), 'Add')
         self._records[domain].append(state)
@@ -265,8 +287,12 @@ class RegistroBrShell(cmd.Cmd):
             print('Please log in first!')
             return
         domain = self.check_domain(domain)
-        ownername, priority, email_server = input('onwnername: '), input('value: '), input('email_server: ')
-        state = RecordState(create_mx_record(ownername, priority, email_server), 'Add')
+        if not domain:
+            return
+        ownername, priority, email_server = input(
+            'onwnername: '), input('value: '), input('email_server: ')
+        state = RecordState(create_mx_record(
+            ownername, priority, email_server), 'Add')
         self._records[domain].append(state)
 
     def complete_new_mx_record(self, text, line, begidx, endidx):
@@ -278,8 +304,12 @@ class RegistroBrShell(cmd.Cmd):
             print('Please log in first!')
             return
         domain = self.check_domain(domain)
-        ownername, usage, selector, matching, data = input('ownername: '), input('usage: '), input('selector: '), input('matching: '), input('data: ')
-        state = RecordState(create_tlsa_record(ownername, usage, selector, matching, data))
+        if not domain:
+            return
+        ownername, usage, selector, matching, data = input('ownername: '), input(
+            'usage: '), input('selector: '), input('matching: '), input('data: ')
+        state = RecordState(create_tlsa_record(
+            ownername, usage, selector, matching, data), 'Add')
         self._records[domain].append(state)
 
     def complete_new_tlsa_record(self, text, line, begidx, endidx):
@@ -291,8 +321,10 @@ class RegistroBrShell(cmd.Cmd):
             print('Please log in first!')
             return
         domain = self.check_domain(domain)
+        if not domain:
+            return
         for i, r in enumerate(self._records[domain]):
-            print(i, r, sep=' - ')
+            print(i, record_line(r.State, r.Record.__class__.__name__, r.Record), sep=' - ')
         chosen = input('which ones to delete (comma separated)? ').split(',')
         for c in sorted(chosen, reverse=True):
             if self._records[domain][int(c)].State == 'Add':
@@ -322,5 +354,29 @@ class RegistroBrShell(cmd.Cmd):
         return True
 
 
-if __name__ == '__main__':
+def print_records(records):
+    print(f'{"State":^9} | {"Type":^12} | {"Data":^53}')
+    for record_state in records:
+        print(record_line(record_state.State,
+                   record_state.Record.__class__.__name__, record_state.Record))
+
+
+def record_line(state, type, record):
+    data = record_values(record)
+    return f'{state:<9} | {type:>12} | {data:<53}'
+
+
+def record_values(record):
+    values = []
+    for field in record._fields:
+        value = getattr(record, field)
+        values.append(f'{value}')
+    return " - ".join(values)
+
+
+def main():
     RegistroBrShell().cmdloop()
+
+
+if __name__ == '__main__':
+    main()
