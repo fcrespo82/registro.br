@@ -37,7 +37,9 @@ class RegistroBrShell(cmd.Cmd):
         'Development mock'
         domain = _DOMAIN(1, 'crespo.com.br', 'expiry',
                          'status', 'contact', 'paylink', False)
-        self._domains = [domain]
+        domain2 = _DOMAIN(2, 'ubuntu.name', 'expiry',
+                         'status', 'contact', 'paylink', False)
+        self._domains = [domain, domain2]
 
         mock_records = [
             RecordState(create_txt_record('_acme-challenge',
@@ -57,11 +59,15 @@ class RegistroBrShell(cmd.Cmd):
                                           data='201803271600392msn9aiznnhm90owmz8d5nc5nddaroa8gv5w7ca7czm2dxcm4c')),
             RecordState(create_txt_record('owner', 'qualquer texto'))
         ]
+        mock_records2 = [
+            RecordState(create_txt_record('*', 'ubuntu name generator'))            
+        ]
 
         self._registrobr = RegistroBrAPI('mock')
         self._user = 'mock'
         self._registrobr.is_logged = True
         self._records.update({domain.FQDN: mock_records})
+        self._records.update({domain2.FQDN: mock_records2})
 
     def postcmd(self, stop, line):
         self.set_prompt()
@@ -85,9 +91,26 @@ class RegistroBrShell(cmd.Cmd):
             return None
         return domain
 
+    def logged_in(self):
+        if (self._user == 'mock'):
+            print('Can\'t do this while mocking!')
+            return False
+        if not (self._registrobr and self._registrobr.is_logged):
+            print('Please log in first!')
+            return False
+        return True
+
     def ensure_domains(self, force=False):
         if not self._domains or force:
             self._domains = self._registrobr.domains()
+    
+    def ensure_records(self, domain, force=False):
+        self.ensure_domains()
+        domain_obj = [ d for d in self._domains if d.FQDN == domain ][0]
+        if domain not in self._records or force:
+            records = self._registrobr.zone_info(domain_obj)
+            records_with_state = list(map(RecordState, records))
+            self._records.update({domain_obj.FQDN: records_with_state})
 
     def do_login(self, _):
         'Login to registro.br'
@@ -136,12 +159,22 @@ class RegistroBrShell(cmd.Cmd):
 
     def do_domains(self, force):
         'List domains registered to this account'
-        if not (self._registrobr and self._registrobr.is_logged):
-            print('Please log in first!')
+        if not self.logged_in():
             return
         self.ensure_domains(force)
         for domain in self._domains:
             print(f'{domain.FQDN}')
+
+    def do_refresh_zone_info(self, domain):
+        if not self.logged_in(): 
+            return
+        domain = self.check_domain(domain)
+        if not domain:
+            return
+        self.ensure_records(domain, force=True)
+    
+    def complete_refresh_zone_info(self, text, line, begidx, endidx):
+        return self.domains_completion(text)
 
     def do_zone_info(self, domain):
         'List records associated to this domain'
@@ -152,15 +185,11 @@ class RegistroBrShell(cmd.Cmd):
         if not domain:
             return
         self.ensure_domains()
-        filtered = filter(lambda d: d.FQDN == domain, self._domains)
+        filtered = [ d for d in self._domains if d.FQDN == domain ]
         for domain_obj in filtered:
             if domain_obj.FQDN not in self._records:
-                records = self._registrobr.zone_info(domain_obj)
-                records_with_state = list(map(RecordState, records))
-                self._records.update({domain_obj.FQDN: records_with_state})
-            for key in self._records:
-                print(f'{f" {key} ":=^80}')
-                print_records(self._records[key])
+                self.ensure_records(domain_obj.FQDN)
+            print_records(self._records[domain_obj.FQDN])
 
     def help_zone_info(self):                                     
         print(f'''List zone info records for the selected domain
@@ -185,7 +214,6 @@ selector = 0: 'Subject Public Key'
 matching = 1: 'SHA-256'
            2: 'SHA-512'
 ''')
-        pass
 
     def domains_completion(self, text):
         self.ensure_domains()
@@ -196,6 +224,45 @@ matching = 1: 'SHA-256'
     def complete_zone_info(self, text, line, begidx, endidx):
         return self.domains_completion(text)
 
+    def do_save(self, domain):
+        'Save records for a domain'
+        domain = self.check_domain(domain)
+        if not domain:
+            return
+
+        d = [d for d in self._domains if d.FQDN == domain]
+        added_deleted = [ record for record in self._records[d[0].FQDN] if record.State != 'Unchanged' ]
+
+        print_records(added_deleted)
+
+        records_to_add = []
+        records_to_delete = []
+        for record_state in added_deleted:
+            ownername = list(record_state.Record._asdict().values())[0]
+            rest = '+'.join(list(map(str, record_state.Record._asdict().values()))[1:])
+            _type = record_state.Record.__class__.__name__.replace('_RECORD', '')
+            record = '|'.join([ownername, _type, rest.replace(' ', '+')])
+            if record_state.State == 'Add':
+                records_to_add.append(record)
+            if record_state.State == 'Delete':
+                records_to_delete.append(record)
+
+        if records_to_add:
+            print(records_to_add)
+            r=self._registrobr.add_records(domain, records_to_add)
+            print(r.status_code)
+        if records_to_delete:
+            print(records_to_delete)
+            r=self._registrobr.remove_records(domain, records_to_delete)
+            print(r.status_code)
+
+    def complete_save(self, text, line, begidx, endidx):
+        return self.domains_completion(text)
+
+    def record_to_text(self, r):
+        if isinstance(r, create_txt_record(None, None)):
+            print('TXT')
+    
     def do_new_txt_record(self, domain):
         'Create a TXT record'
         if not (self._registrobr and self._registrobr.is_logged):
@@ -298,6 +365,7 @@ matching = 1: 'SHA-256'
         domain = self.check_domain(domain)
         if not domain:
             return
+        self.ensure_records(domain)
         for i, r in enumerate(self._records[domain]):
             print(i, record_line(r.State, r.Record.__class__.__name__, r.Record), sep=' - ')
         chosen = input('which ones to delete (comma separated)? ').split(',')
