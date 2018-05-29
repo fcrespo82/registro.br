@@ -22,7 +22,6 @@ _TLSA_RECORD_USAGE = {0: 'CA', 1: 'Service certificate',
 _TLSA_RECORD_SELECTOR = {0: 'Subject Public Key', 1: 'Subject Public Key'}
 _TLSA_RECORD_MATCHING = {1: 'SHA-256', 2: 'SHA-512'}
 
-
 class RegistroBrAPI:
     is_logged = False
     _cookies = None
@@ -158,8 +157,10 @@ class RegistroBrAPI:
         dados = {'request-token': self._request_token}
         for record in records:
             dados.update({'add-rr-'+str(count): record})
-        self._session.post(
+            count = count + 1
+        r = self._session.post(
             url, data=dados, cookies=self._cookies, headers=self._headers)
+        return r
 
     def remove_records(self, domain, records):
         'Remove records from the domain'
@@ -168,9 +169,10 @@ class RegistroBrAPI:
         dados = {'request-token': self._request_token}
         for record in records:
             dados.update({'remove-rr-'+str(count): record})
-        self._session.post(
+            count = count + 1
+        r = self._session.post(
             url, data=dados, cookies=self._cookies, headers=self._headers)
-
+        return r
 
 def create_a_record(ownername, ip):
     'Creates an A record'

@@ -249,12 +249,10 @@ matching = 1: 'SHA-256'
 
         if records_to_add:
             print(records_to_add)
-            r=self._registrobr.add_records(domain, records_to_add)
-            print(r.status_code)
+            self._registrobr.add_records(domain, records_to_add)
         if records_to_delete:
             print(records_to_delete)
-            r=self._registrobr.remove_records(domain, records_to_delete)
-            print(r.status_code)
+            self._registrobr.remove_records(domain, records_to_delete)
 
     def complete_save(self, text, line, begidx, endidx):
         return self.domains_completion(text)
