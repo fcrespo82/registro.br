@@ -42,22 +42,12 @@ class RegistroBrShell(cmd.Cmd):
         self._domains = [domain, domain2]
 
         mock_records = [
-            RecordState(create_txt_record('_acme-challenge',
-                                          'LupjAATGvUdOtoofGU4j_TK4WsZM5omLSuc5txLndfg')),
-            RecordState(create_tlsa_record('_test', usage=0, selector=1,
-                                           matching=1, data='d2abde240d7cd3ee6b4b28c54df034b9')),
-            RecordState(create_mx_record('_test_mx', 10, 'test.mx.record')),
-            RecordState(create_cname_record(
-                ownername='fernando', server='fcrespo82.github.io')),
-            RecordState(create_cname_record(
-                ownername='blog.fernando', server='fcrespo82.github.io')),
-            RecordState(create_cname_record(
-                ownername='curriculo.fernando', server='fcrespo82.github.io')),
-            RecordState(create_cname_record(
-                ownername='nas', server='fcrespo82.myds.me')),
-            RecordState(create_txt_record(ownername='_dnsauth.nas',
-                                          data='201803271600392msn9aiznnhm90owmz8d5nc5nddaroa8gv5w7ca7czm2dxcm4c')),
-            RecordState(create_txt_record('owner', 'qualquer texto'))
+            RecordState(create_a_record('a','192.168.1.1')),
+            RecordState(create_aaaa_record('aaaa','::1')),
+            RecordState(create_cname_record('cname','cname.com.br')),
+            RecordState(create_mx_record('mx',10,'mx.com.br')),
+            RecordState(create_tlsa_record('tlsa',0,1,1,'data')),
+            RecordState(create_txt_record('txt','"qualquer coisa"'))
         ]
         mock_records2 = [
             RecordState(create_txt_record('*', 'ubuntu name generator'))            
@@ -239,20 +229,19 @@ matching = 1: 'SHA-256'
         records_to_delete = []
         for record_state in added_deleted:
             ownername = list(record_state.Record._asdict().values())[0]
-            rest = '+'.join(list(map(str, record_state.Record._asdict().values()))[1:])
+            rest = ' '.join(list(map(str, record_state.Record._asdict().values()))[1:])
             _type = record_state.Record.__class__.__name__.replace('_RECORD', '')
-            record = '|'.join([ownername, _type, rest.replace(' ', '+')])
+            record = '|'.join([ownername, _type, rest])
             if record_state.State == 'Add':
                 records_to_add.append(record)
             if record_state.State == 'Delete':
                 records_to_delete.append(record)
 
         if records_to_add:
-            print(records_to_add)
             self._registrobr.add_records(domain, records_to_add)
         if records_to_delete:
-            print(records_to_delete)
             self._registrobr.remove_records(domain, records_to_delete)
+        self.do_refresh_zone_info(domain)
 
     def complete_save(self, text, line, begidx, endidx):
         return self.domains_completion(text)
@@ -332,7 +321,7 @@ matching = 1: 'SHA-256'
         ownername, priority, email_server = input(
             'onwnername: '), input('value: '), input('email_server: ')
         state = RecordState(create_mx_record(
-            ownername, priority, email_server), 'Add')
+            ownername, int(priority), email_server), 'Add')
         self._records[domain].append(state)
 
     def complete_new_mx_record(self, text, line, begidx, endidx):

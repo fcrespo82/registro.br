@@ -106,9 +106,6 @@ class RegistroBrAPI:
         for record in records:
             ownername, type, data = record["value"].split('|')
 
-            # _tuple = namedtuple(f'{type}_RECORD', ['ownername', 'data'])(
-            #     ownername, data)
-
             if type == 'A':
                 _tuple = _A_RECORD(ownername, data)
             elif type == 'AAAA':
@@ -131,9 +128,9 @@ class RegistroBrAPI:
     def __parse_tlsa(self, data):
         usage, selector, matching, data = data.rstrip().split(' ')
 
-        usage = (int(usage), _TLSA_RECORD_USAGE[int(usage)])
-        selector = (int(selector), _TLSA_RECORD_SELECTOR[int(selector)])
-        matching = (int(matching), _TLSA_RECORD_MATCHING[int(matching)])
+        usage = int(usage) #(int(usage), _TLSA_RECORD_USAGE[int(usage)])
+        selector = int(selector) #(int(selector), _TLSA_RECORD_SELECTOR[int(selector)])
+        matching = int(matching) #(int(matching), _TLSA_RECORD_MATCHING[int(matching)])
 
         return usage, selector, matching, data
 
