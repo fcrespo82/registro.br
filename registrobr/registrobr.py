@@ -33,15 +33,16 @@ class RegistroBrAPI:
 
     def login(self):
         'Log in to registro.br'
-        url = 'https://registro.br/2/login'
+        url = 'https://registro.br/v2/ajax/user/login'
 
         r = self._session.get(url)
+        self._cookies = r.cookies
 
         bs = bs4.BeautifulSoup(r.content, "html5lib")
-        request_token = bs.find(attrs={'id': 'request-token'})['value']
+        # request_token = bs.find(attrs={'id': 'request-token'})['value']
 
         self._headers = {
-            'Request-Token': request_token
+            'X-XSRF-TOKEN': r.cookies.get('XSRF-TOKEN')
         }
 
         if not self._password:
@@ -49,15 +50,15 @@ class RegistroBrAPI:
 
         dados = {'user': self._user, 'password': self._password}
 
-        url = 'https://registro.br/ajax/login'
-        r = self._session.post(url, json=dados, headers=self._headers)
+        url = 'https://registro.br/v2/ajax/user/login'
+        r = self._session.post(url, json=dados, cookies=self._cookies, headers=self._headers)
         self._cookies = r.cookies
 
-        if not r.json()['success']:
+        if not r.ok:
             print(f'Falha ao logar: {r.json()["msg"]}')
             exit(1)
 
-        if r.json()['otp']:
+        if 'otp' in r.json():
             if not self._otp:
                 self._otp = input('OTP: ')
             url = 'https://registro.br/ajax/token'
@@ -101,6 +102,19 @@ class RegistroBrAPI:
         parsed_records = self.__parse_records(domain, records)
         return parsed_records
 
+    def __check_record(self, domain, record):
+        items = [x for x in self.domains() if x.FQDN == domain]
+        errors = False
+        for item in items:
+            records = self.zone_info(item)
+            for rec in records:
+                if type(rec) == type(record) and rec.ownername == record.ownername:
+                    print("A " + type(record).__name__ + " for ownername " + record.ownername + " already exists")
+                    errors = True
+        if errors:
+            exit(3)
+
+        
     def __parse_records(self, domain, records):
         parsed_records = []
         for record in records:
@@ -153,10 +167,13 @@ class RegistroBrAPI:
         count = 0
         dados = {'request-token': self._request_token}
         for record in records:
+            self.__check_record(domain, record)
             dados.update({'add-rr-'+str(count): record})
             count = count + 1
         r = self._session.post(
             url, data=dados, cookies=self._cookies, headers=self._headers)
+        if re.match("Erro ao adicionar o record", r.content):
+            raise RuntimeError("Erro ao adicionar o record")
         return r
 
     def remove_records(self, domain, records):
