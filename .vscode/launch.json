@@ -5,11 +5,11 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python: Current File",
+            "name": "Python: Test CLI",
             "type": "python",
             "request": "launch",
-            "program": "${file}",
-            "args": ["-p", "FCregistrobr121982", "fxfcr", "add_record", "crespo.com.br", "A", "nas", "127.0.0.1"]            
+            "program": "${workspaceFolder}/cli.py",
+            "args": ["-p", "FCregistrobr121982", "fxfcr", "add_record", "crespo.com.br", "CNAME", "nas", "fcrespo82.myds.me"]
         },
         {
             "name": "Python: Attach",

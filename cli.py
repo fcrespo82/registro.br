@@ -2,7 +2,7 @@
 
 import argparse
 import getpass
-from registrobr import RegistroBrAPI, create_txt_record, create_a_record, create_aaaa_record, create_cname_record, create_mx_record, create_tlsa_record
+from registrobr import RegistroBrAPI, RegistroBrRecords
 
 
 def config_argparse():
@@ -32,9 +32,13 @@ def config_argparse():
 def main():
     ARGS = config_argparse().parse_args()
 
-    registrobr = RegistroBrAPI(ARGS.user)
+    if ARGS.password:
+        registrobr = RegistroBrAPI(ARGS.user, password=ARGS.password)
+    else:
+        registrobr = RegistroBrAPI(ARGS.user)
 
     registrobr.login()
+
 
     if ARGS.command == 'domains':
         domains = registrobr.domains()
@@ -49,22 +53,22 @@ def main():
             print(*records, sep='\n')
     elif ARGS.command == 'add_record':
         if ARGS.type.upper() == 'A':
-            record = create_a_record(ARGS.ownername, ARGS.value)
+            record = RegistroBrRecords.create_a_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'AAA':
-            record = create_aaaa_record(ARGS.ownername, ARGS.value)
+            record = RegistroBrRecords.create_aaaa_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'record':
-            record = create_txt_record(ARGS.ownername, ARGS.value)
+            record = RegistroBrRecords.create_txt_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'CNAME':
-            record = create_cname_record(ARGS.ownername, ARGS.value)
+            record = RegistroBrRecords.create_cname_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'MX':
-            record = create_mx_record(ARGS.ownername, **ARGS.value.split())
+            record = RegistroBrRecords.create_mx_record(ARGS.ownername, **ARGS.value.split())
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'TLSA':
-            record = create_tlsa_record(
+            record = RegistroBrRecords.create_tlsa_record(
                 ARGS.ownername, **ARGS.value.split())
             registrobr.add_records(ARGS.domain, [record])
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import cmd
-from registrobr import RegistroBrAPI, create_txt_record, create_a_record, create_aaaa_record, create_cname_record, create_mx_record, create_tlsa_record
-from registrobr.registrobr import _DOMAIN
+from registrobr import RegistroBrAPI, RegistroBrRecords
 from getpass import getpass
 from collections import namedtuple
 from pprint import pprint
@@ -32,32 +31,6 @@ class RegistroBrShell(cmd.Cmd):
     def __init__(self):
         super().__init__()
         self.set_prompt()
-
-    def do_mock(self, args):
-        'Development mock'
-        domain = _DOMAIN(1, 'crespo.com.br', 'expiry',
-                         'status', 'contact', 'paylink', False)
-        domain2 = _DOMAIN(2, 'ubuntu.name', 'expiry',
-                         'status', 'contact', 'paylink', False)
-        self._domains = [domain, domain2]
-
-        mock_records = [
-            RecordState(create_a_record('a','192.168.1.1')),
-            RecordState(create_aaaa_record('aaaa','::1')),
-            RecordState(create_cname_record('cname','cname.com.br')),
-            RecordState(create_mx_record('mx',10,'mx.com.br')),
-            RecordState(create_tlsa_record('tlsa',0,1,1,'data')),
-            RecordState(create_txt_record('txt','"qualquer coisa"'))
-        ]
-        mock_records2 = [
-            RecordState(create_txt_record('*', 'ubuntu name generator'))            
-        ]
-
-        self._registrobr = RegistroBrAPI('mock')
-        self._user = 'mock'
-        self._registrobr.is_logged = True
-        self._records.update({domain.FQDN: mock_records})
-        self._records.update({domain2.FQDN: mock_records2})
 
     def postcmd(self, stop, line):
         self.set_prompt()
@@ -247,7 +220,7 @@ matching = 1: 'SHA-256'
         return self.domains_completion(text)
 
     def record_to_text(self, r):
-        if isinstance(r, create_txt_record(None, None)):
+        if isinstance(r, RegistroBrRecords.create_txt_record(None, None)):
             print('TXT')
     
     def do_new_txt_record(self, domain):
@@ -259,7 +232,7 @@ matching = 1: 'SHA-256'
         if not domain:
             return
         ownername, value = input('onwnername: '), input('value: ')
-        state = RecordState(create_txt_record(ownername, value), 'Add')
+        state = RecordState(RegistroBrRecords.create_txt_record(ownername, value), 'Add')
         self._records[domain].append(state)
 
     def complete_new_txt_record(self, text, line, begidx, endidx):
@@ -274,7 +247,7 @@ matching = 1: 'SHA-256'
         if not domain:
             return
         ownername, server = input('onwnername: '), input('server: ')
-        state = RecordState(create_cname_record(ownername, server), 'Add')
+        state = RecordState(RegistroBrRecords.create_cname_record(ownername, server), 'Add')
         self._records[domain].append(state)
 
     def complete_new_cname_record(self, text, line, begidx, endidx):
@@ -289,7 +262,7 @@ matching = 1: 'SHA-256'
         if not domain:
             return
         ownername, ip = input('onwnername: '), input('IP v4: ')
-        state = RecordState(create_a_record(ownername, ip), 'Add')
+        state = RecordState(RegistroBrRecords.create_a_record(ownername, ip), 'Add')
         self._records[domain].append(state)
 
     def complete_new_a_record(self, text, line, begidx, endidx):
@@ -304,7 +277,7 @@ matching = 1: 'SHA-256'
         if not domain:
             return
         ownername, ipv6 = input('onwnername: '), input('IP v6: ')
-        state = RecordState(create_aaaa_record(ownername, ipv6), 'Add')
+        state = RecordState(RegistroBrRecords.create_aaaa_record(ownername, ipv6), 'Add')
         self._records[domain].append(state)
 
     def complete_new_aaaa_record(self, text, line, begidx, endidx):
@@ -320,7 +293,7 @@ matching = 1: 'SHA-256'
             return
         ownername, priority, email_server = input(
             'onwnername: '), input('value: '), input('email_server: ')
-        state = RecordState(create_mx_record(
+        state = RecordState(RegistroBrRecords.create_mx_record(
             ownername, int(priority), email_server), 'Add')
         self._records[domain].append(state)
 
@@ -337,7 +310,7 @@ matching = 1: 'SHA-256'
             return
         ownername, usage, selector, matching, data = input('ownername: '), input(
             'usage: '), input('selector: '), input('matching: '), input('data: ')
-        state = RecordState(create_tlsa_record(
+        state = RecordState(RegistroBrRecords.create_tlsa_record(
             ownername, usage, selector, matching, data), 'Add')
         self._records[domain].append(state)
 
