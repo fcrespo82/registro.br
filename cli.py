@@ -50,12 +50,12 @@ def main():
         filtered = filter(lambda d: d.FQDN == ARGS.domain, domains)
         for domain in filtered:
             records = registrobr.zone_info(domain)
-            print(*records, sep='\n')
+            RegistroBrRecords.print(records)
     elif ARGS.command == 'add_record':
         if ARGS.type.upper() == 'A':
             record = RegistroBrRecords.create_a_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
-        elif ARGS.type.upper() == 'AAA':
+        elif ARGS.type.upper() == 'AAAA':
             record = RegistroBrRecords.create_aaaa_record(ARGS.ownername, ARGS.value)
             registrobr.add_records(ARGS.domain, [record])
         elif ARGS.type.upper() == 'record':

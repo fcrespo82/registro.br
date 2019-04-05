@@ -5,6 +5,7 @@ from getpass import getpass
 from ipaddress import IPv4Address, IPv6Address, AddressValueError
 from collections import namedtuple
 from abc import ABC
+from colorama import init, Fore, Style
 
 _A_RECORD = namedtuple('A_RECORD', ['ownername', 'ip'])
 _AAAA_RECORD = namedtuple('AAAA_RECORD', ['ownername', 'ipv6'])
@@ -53,7 +54,10 @@ class RegistroBrAPI:
         self._cookies = r.cookies
 
         if not r.ok:
-            print(f'Falha ao logar: {r.json()["msg"]}')
+            if "messages" in r.json():
+                for item in r.json()["messages"]:
+                    print(
+                        f'Falha ao logar: {item["message"]}, codigo: {item["code"]}')
             exit(1)
 
         if 'otp' in r.json():
@@ -65,8 +69,11 @@ class RegistroBrAPI:
                 url, json=dados, cookies=self._cookies, headers=self._headers)
             self._cookies = r.cookies
 
-            if not r.json()['success']:
-                print(f'Falha ao logar (OTP): {r.json()["msg"]}')
+            if not r.ok:
+                if "messages" in r.json():
+                    for item in r.json()["messages"]:
+                        print(
+                            f'Falha ao logar (OTP): {item["message"]}, codigo: {item["code"]}')
                 exit(2)
 
         url = 'https://registro.br/2/painel'
@@ -244,6 +251,24 @@ class RegistroBrRecords:
             raise ValueError(
                 f'Matching must be one of {_TLSA_RECORD_MATCHING}')
         return _TLSA_RECORD(ownername, usage, selector, matching, data)
+
+    def print(records):
+        print(f'{"Type":^15} | {"Ownername":^25} | {"Data":^53}')
+        for record in records:
+            print(RegistroBrRecords.__record_line(
+                record.__class__.__name__, record.ownername, record))
+
+    def __record_line(type, ownername, record):
+        data = RegistroBrRecords.__record_values(record)
+        color = Style.BRIGHT+Fore.YELLOW
+        return f'{color}{type:<15}{Style.RESET_ALL} | {Style.BRIGHT+Fore.BLUE}{ownername:>25}{Style.RESET_ALL} | {data:<53}'
+
+    def __record_values(record):
+        values = []
+        for field in record._fields:
+            value = getattr(record, field)
+            values.append(f'{value}')
+        return " - ".join(values)
 
 
 if __name__ == "__main__":
