@@ -13,19 +13,19 @@ _TXT_RECORD = namedtuple('TXT_RECORD', ['ownername', 'data'])
 _MX_RECORD = namedtuple('MX_RECORD', ['ownername', 'priority', 'email_server'])
 _TLSA_RECORD = namedtuple(
     'TLSA_RECORD', ['ownername', 'usage', 'selector', 'matching', 'data'])
-
 _DOMAIN = namedtuple('Domain', [
                      'Id', 'FQDN', 'ExpirationDate', 'Status', 'Contact', 'PayLink', 'Auctionable'])
-
 _TLSA_RECORD_USAGE = {0: 'CA', 1: 'Service certificate',
                       2: 'Trust Anchor', 3: 'Dom-issued certificate'}
 _TLSA_RECORD_SELECTOR = {0: 'Subject Public Key', 1: 'Subject Public Key'}
 _TLSA_RECORD_MATCHING = {1: 'SHA-256', 2: 'SHA-512'}
 
+
 class RegistroBrAPI:
     is_logged = False
     _cookies = None
     _headers = None
+
     def __init__(self, user, password=None, otp=None):
         self._session = requests.session()
         self._user, self._password, self._otp = user, password, otp
@@ -38,9 +38,6 @@ class RegistroBrAPI:
         r = self._session.get(url)
         self._cookies = r.cookies
 
-        bs = bs4.BeautifulSoup(r.content, "html5lib")
-        # request_token = bs.find(attrs={'id': 'request-token'})['value']
-
         self._headers = {
             'X-XSRF-TOKEN': r.cookies.get('XSRF-TOKEN')
         }
@@ -51,7 +48,8 @@ class RegistroBrAPI:
         dados = {'user': self._user, 'password': self._password}
 
         url = 'https://registro.br/v2/ajax/user/login'
-        r = self._session.post(url, json=dados, cookies=self._cookies, headers=self._headers)
+        r = self._session.post(
+            url, json=dados, cookies=self._cookies, headers=self._headers)
         self._cookies = r.cookies
 
         if not r.ok:
@@ -108,13 +106,13 @@ class RegistroBrAPI:
         for item in items:
             records = self.zone_info(item)
             for rec in records:
-                if type(rec) == type(record) and rec.ownername == record.ownername:
-                    print("A " + type(record).__name__ + " for ownername " + record.ownername + " already exists")
+                if rec == record:
+                    print("A " + type(record).__name__ + " for ownername " +
+                          record.ownername + " already exists")
                     errors = True
         if errors:
             exit(3)
 
-        
     def __parse_records(self, domain, records):
         parsed_records = []
         for record in records:
@@ -141,11 +139,9 @@ class RegistroBrAPI:
 
     def __parse_tlsa(self, data):
         usage, selector, matching, data = data.rstrip().split(' ')
-
-        usage = int(usage) #(int(usage), _TLSA_RECORD_USAGE[int(usage)])
-        selector = int(selector) #(int(selector), _TLSA_RECORD_SELECTOR[int(selector)])
-        matching = int(matching) #(int(matching), _TLSA_RECORD_MATCHING[int(matching)])
-
+        usage = int(usage)
+        selector = int(selector)
+        matching = int(matching)
         return usage, selector, matching, data
 
     def __parse_mx(self, data):
@@ -156,9 +152,9 @@ class RegistroBrAPI:
         'Log out of registro.br'
         if self.is_logged:
             url = 'https://registro.br/cgi-bin/nicbr/logout'
-            r = self._session.get(url, cookies=self._cookies,
-                                  headers=self._headers)
-            self._cookies = r.cookies
+            r = self._session.get(
+                url, cookies=self._cookies, headers=self._headers)
+            self._cookies = None
             self.is_logged = False
 
     def add_records(self, domain, records):
@@ -172,8 +168,6 @@ class RegistroBrAPI:
             count = count + 1
         r = self._session.post(
             url, data=dados, cookies=self._cookies, headers=self._headers)
-        if re.match("Erro ao adicionar o record", r.content):
-            raise RuntimeError("Erro ao adicionar o record")
         return r
 
     def remove_records(self, domain, records):
@@ -188,48 +182,70 @@ class RegistroBrAPI:
             url, data=dados, cookies=self._cookies, headers=self._headers)
         return r
 
-def create_a_record(ownername, ip):
-    'Creates an A record'
-    try:
-        IPv4Address(ip)
-    except AddressValueError as addressValueError:
-        raise ValueError(f'Invalid IP address: {addressValueError}')
-    return _A_RECORD(ownername, ip)
+
+class RegistroBrRecords:
+    def create_a_record(ownername, ip):
+        '''Creates an A record
+        >>> RegistroBrRecords.create_a_record('ownername', '127.0.0.1')
+        A_RECORD(ownername='ownername', ip='127.0.0.1')
+        '''
+        try:
+            IPv4Address(ip)
+        except AddressValueError as addressValueError:
+            raise ValueError(f'Invalid IP address: {addressValueError}')
+        return _A_RECORD(ownername, ip)
+
+    def create_aaaa_record(ownername, ipv6):
+        '''Creates an AAAA record
+        >>> RegistroBrRecords.create_aaaa_record('ownername', '::1')
+        AAAA_RECORD(ownername='ownername', ipv6='::1')
+        '''
+        try:
+            IPv6Address(ipv6)
+        except AddressValueError as addressValueError:
+            raise ValueError(f'Invalid IP address: {addressValueError}')
+        return _AAAA_RECORD(ownername, ipv6)
+
+    def create_cname_record(ownername, server):
+        '''Creates a CNAME record
+        >>> RegistroBrRecords.create_cname_record('ownername', 'server.com.br')
+        CNAME_RECORD(ownername='ownername', server='server.com.br')
+        '''
+        return _CNAME_RECORD(ownername, server)
+
+    def create_mx_record(ownername, priority, email_server):
+        '''Creates a MX record
+        >>> RegistroBrRecords.create_mx_record('ownername', 10, 'email.server.com.br')
+        MX_RECORD(ownername='ownername', priority=10, email_server='email.server.com.br')
+        '''
+        max_range = 65535
+        if priority not in range(1, max_range):
+            raise ValueError(f'Priority must be within 1-{max_range} range')
+        return _MX_RECORD(ownername, priority, email_server)
+
+    def create_txt_record(ownername, data):
+        '''Creates a TXT record
+        >>> RegistroBrRecords.create_txt_record('ownername', 'any value')
+        TXT_RECORD(ownername='ownername', data='any value')
+        '''
+        return _TXT_RECORD(ownername, data)
+
+    def create_tlsa_record(ownername, usage, selector, matching, data):
+        '''Creates a TLS record
+        >>> RegistroBrRecords.create_tlsa_record('ownername', 1, 0, 2, 'any value')
+        TLSA_RECORD(ownername='ownername', usage=1, selector=0, matching=2, data='any value')
+        '''
+        if usage not in _TLSA_RECORD_USAGE:
+            raise ValueError(f'Usage must be one of {_TLSA_RECORD_USAGE}')
+        if selector not in _TLSA_RECORD_SELECTOR:
+            raise ValueError(
+                f'Selector must be one of {_TLSA_RECORD_SELECTOR}')
+        if matching not in _TLSA_RECORD_MATCHING:
+            raise ValueError(
+                f'Matching must be one of {_TLSA_RECORD_MATCHING}')
+        return _TLSA_RECORD(ownername, usage, selector, matching, data)
 
 
-def create_aaaa_record(ownername, ipv6):
-    'Creates an AAAA record'
-    try:
-        IPv6Address(ipv6)
-    except AddressValueError as addressValueError:
-        raise ValueError(f'Invalid IP address: {addressValueError}')
-    return _AAAA_RECORD(ownername, ipv6)
-
-
-def create_cname_record(ownername, server):
-    'Creates a CNAME record'
-    return _CNAME_RECORD(ownername, server)
-
-
-def create_mx_record(ownername, priority, email_server):
-    'Creates a MX record'
-    max_range = 65535
-    if priority not in range(1, max_range):
-        raise ValueError(f'Priority must be within 1-{max_range} range')
-    return _MX_RECORD(ownername, priority, email_server)
-
-
-def create_txt_record(ownername, data):
-    'Creates a TXT record'
-    return _TXT_RECORD(ownername, data)
-
-
-def create_tlsa_record(ownername, usage, selector, matching, data):
-    'Creates a TLS record'
-    if usage not in _TLSA_RECORD_USAGE:
-        raise ValueError(f'Usage must be one of {_TLSA_RECORD_USAGE}')
-    if selector not in _TLSA_RECORD_SELECTOR:
-        raise ValueError(f'Selector must be one of {_TLSA_RECORD_SELECTOR}')
-    if matching not in _TLSA_RECORD_MATCHING:
-        raise ValueError(f'Matching must be one of {_TLSA_RECORD_MATCHING}')
-    return _TLSA_RECORD(ownername, usage, selector, matching, data)
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
